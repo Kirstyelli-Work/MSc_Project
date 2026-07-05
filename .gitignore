@@ -1,0 +1,5 @@
+*
+!.gitignore
+
+!GZD_5_Classification.ipynb
+!projectFunctions.py
