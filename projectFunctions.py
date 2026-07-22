@@ -1,4 +1,6 @@
+from matplotlib import cm
 from sklearn.cluster import MiniBatchKMeans
+from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
 from sklearn.mixture import BayesianGaussianMixture
 import pandas as pd
 import numpy as np
@@ -213,5 +215,93 @@ def saving_images(classification, class_name,img_dir, data_root_dir):
                     dest_path = os.path.join(data_root_dir, f'Galaxy_Images/{class_name}', file)
                     shutil.copy2(src_path, dest_path)
                     count += 1
-        print(f'{class_name}: {count}')
         show_random_images(os.path.join(data_root_dir, f'Galaxy_Images/{class_name}'), class_name, data_root_dir)
+
+def accuracy_plots(subset, n_clusters, width=1, xlimit=None, method=None):
+
+    # X AXIS - DISTANCE INFO
+    # Extract distance columns as a numpy array
+    distance_cols = [f"Distance_{i}" for i in range(n_clusters)]  
+    distance_array = subset[distance_cols].to_numpy()
+    # Create Assigned Distance Column by selecting the distance corresponding to the assigned cluster for each row
+    subset["Assigned_Distance"] = distance_array[np.arange(len(subset)),subset["Cluster"].to_numpy()]
+    # Create bins 
+    bin_edges = np.arange(0, subset["Assigned_Distance"].max() + 1, width)
+    # Create Distance Bin Column
+    subset["Distance_Bin"] = pd.cut(subset["Assigned_Distance"],bins=bin_edges,include_lowest=True)
+    # Create Distance Groups
+    grouped = subset.groupby("Distance_Bin", observed=False)
+
+    # Y AXIS - NUMBER OF GALAXIES
+    # Number of galaxies in each distance bin
+    counts = (subset.groupby("Distance_Bin", observed=False).size())
+    # Finding bin centers for plotting
+    centres = [interval.left + 0.5 for interval in counts.index]
+
+    # Y AXIS - ACCURACY MEAN PER BIN
+    # Was the classification correct?
+    subset["Correct"] = (subset["Predicted_Label"] == subset["Volunteer_Label"])
+    accuracy = grouped["Correct"].mean()
+
+    # Y AXIS - USER CONFIDENCE
+    grouped_votes = grouped["smooth-or-featured_total-votes"].sum()
+
+    # MAKING INDIVIDUAL PLOTS
+    _, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2,2,figsize=(15,12), constrained_layout=True)
+
+    ax1.bar(centres, counts.values, width=width, align="center")
+    if xlimit is not None:
+        ax1.set_xlim(0, xlimit)
+    ax1.set_xlabel("Distance to Assigned Cluster Centroid")
+    ax1.set_ylabel("Number of Galaxies")
+    ax1.set_title("Distribution of Distances to Assigned Cluster Centroids")
+    ax1.grid(alpha=0.3)
+
+    ax2.bar(centres, accuracy.values, width=width, align="center")
+    if xlimit is not None:
+        ax2.set_xlim(0, xlimit)
+    ax2.set_xlabel("Distance to Assigned Cluster Centroid")
+    ax2.set_ylabel("Classification Accuracy")
+    ax2.set_title("Distribution of Distances to Assigned Cluster Centroids and Classification Accuracy")
+    ax2.grid(alpha=0.3)
+
+    ax3.bar(centres, grouped_votes.values, width=width, align="center")
+    if xlimit is not None:
+        ax3.set_xlim(0, xlimit)
+    ax3.set_xlabel("Distance to Assigned Cluster Centroid")
+    ax3.set_ylabel("User Confidence: Number of Votes in Q1")
+    ax3.set_title("Distribution of Distances to Assigned Cluster Centroids and User Confidence")
+    ax3.grid(alpha=0.3)
+
+    cm = confusion_matrix(subset['Volunteer_Label'], subset['Predicted_Label'], labels=['R', 'S', 'E'])
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=['Round Elliptical', 'Spiral', 'Edge-On'], )
+    disp.plot(ax=ax4, colorbar=False ,cmap=plt.cm.Blues)
+    ax4.set_xlabel('Predicted Label')
+    ax4.set_ylabel('True Label')
+    ax4.tick_params(axis="y", rotation=90)
+
+    plt.savefig(os.path.join('Data/Thesis Plots', f'{method}_individual_accuracy_plots.png'), bbox_inches='tight')
+    plt.show()
+
+    # MAKING TOTAL PLOT
+    _, ax1 = plt.subplots(1,1,figsize=(8,6), constrained_layout=True)
+
+    # Left Y-Axis: Accuracy
+    ax1.plot(centres, accuracy.values, color="tab:blue", label="Accuracy")
+    ax1.set_xlabel("Distance to Assigned Cluster Centroid")
+    ax1.set_ylabel("Classification Accuracy", color="tab:blue")
+    ax1.tick_params(axis='y', labelcolor="tab:blue")
+    if xlimit is not None:
+        ax1.set_xlim(0, xlimit)
+
+    # Right Y-Axis: User Confidence
+    ax2 = ax1.twinx()
+    ax2.plot(centres, grouped_votes.values, color="tab:red")
+    ax2.set_ylabel("User Confidence: Number of Votes in Q1", color="tab:red")
+    ax2.tick_params(axis='y', labelcolor="tab:red")
+
+    plt.title("Classification Accuracy and Q1 Votes vs Distance")
+    plt.grid(alpha=0.3)
+    plt.savefig(os.path.join('Data/Thesis Plots', f'{method}_accuracy_votes_plot.png'), bbox_inches='tight')
+    plt.show()
+
