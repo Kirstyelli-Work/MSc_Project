@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 def myMBKM(features, n_clusters=20, max_iter=10, n_init="auto"):
     # Perform fit
     my_kmeans = MiniBatchKMeans(n_clusters=n_clusters, max_iter=max_iter, n_init=n_init).fit(features)
-    print('Iterations: ',my_kmeans.n_iter_)
+    #print('K-Means Iterations: ',my_kmeans.n_iter_)
     # Predict Labels, Centers and Distances
     kmeans_labels = my_kmeans.predict(features)
     kmeans_centers = my_kmeans.cluster_centers_
@@ -34,7 +34,7 @@ def myBGMM(features, n_components=20, weight_concentration_prior=0.5, n_init=10,
     # Perform fit
     my_bgmm = BayesianGaussianMixture(n_components=n_components, weight_concentration_prior=weight_concentration_prior, n_init=n_init, max_iter=max_iter).fit(features)
     print("Converged: ", my_bgmm.converged_)
-    print("Iterations: ", my_bgmm.n_iter_)
+    print("BGMM Iterations: ", my_bgmm.n_iter_)
     # Predict Labels, Centers and Probabilities
     bgmm_labels = my_bgmm.predict(features)
     bgmm_centers = my_bgmm.means_
