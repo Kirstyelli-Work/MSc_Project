@@ -217,29 +217,49 @@ def saving_images(classification, class_name,img_dir, data_root_dir):
                     count += 1
         show_random_images(os.path.join(data_root_dir, f'Galaxy_Images/{class_name}'), class_name, data_root_dir)
 
-def accuracy_plots(subset, n_clusters, width=1, xlimit=None, method=None):
+def accuracy_plot_formatting(ax, axis_label, xlim=None, ylim=None):    
+
+    if xlim is not None:
+        ax.set_xlim(*xlim)
+    else:
+        ax.set_xlim(left=0)
+
+    if ylim is not None:
+        ax.set_ylim(*ylim)
+    else:
+        ax.set_ylim(bottom=0)
+
+    ax.set_xlabel(axis_label)
+
+def accuracy_plots(subset, n_clusters, width=1, xlimits=None, ylimits=None, method=None):
 
     # X AXIS - DISTANCE INFO
     # Extract distance columns as a numpy array
-    distance_cols = [f"Distance_{i}" for i in range(n_clusters)]  
+    if method == "BGMM":
+        prefix = 'Prob'
+        x_axis_label = 'Assigned Cluster Gaussian Density'
+    elif method == "MBKM":
+        prefix = 'Distance'
+        x_axis_label = 'Distance to Assigned Cluster Centroid'
+
+    distance_cols = [f"{prefix}_{i}" for i in range(n_clusters)]
     distance_array = subset[distance_cols].to_numpy()
-    # Create Assigned Distance Column by selecting the distance corresponding to the assigned cluster for each row
-    subset["Assigned_Distance"] = distance_array[np.arange(len(subset)),subset["Cluster"].to_numpy()]
-    # Create bins 
-    bin_edges = np.arange(0, subset["Assigned_Distance"].max() + 1, width)
+    # Finding Assigned Distance by selecting the distance corresponding to the assigned cluster for each row
+    subset['Assigned_Distance'] = distance_array[np.arange(len(subset)), subset['Cluster'].to_numpy()]
+    # Create Bins
+    bin_edges = np.arange(0, subset['Assigned_Distance'].max()+width, width)
     # Create Distance Bin Column
-    subset["Distance_Bin"] = pd.cut(subset["Assigned_Distance"],bins=bin_edges,include_lowest=True)
+    subset['Distance_Bin'] = pd.cut(subset['Assigned_Distance'],bins=bin_edges,include_lowest=True)
     # Create Distance Groups
     grouped = subset.groupby("Distance_Bin", observed=False)
 
     # Y AXIS - NUMBER OF GALAXIES
     # Number of galaxies in each distance bin
-    counts = (subset.groupby("Distance_Bin", observed=False).size())
+    counts = grouped.size()
     # Finding bin centers for plotting
-    centres = [interval.left + 0.5 for interval in counts.index]
+    centres = np.array([i.mid for i in counts.index])
 
     # Y AXIS - ACCURACY MEAN PER BIN
-    # Was the classification correct?
     subset["Correct"] = (subset["Predicted_Label"] == subset["Volunteer_Label"])
     accuracy = grouped["Correct"].mean()
 
@@ -249,28 +269,19 @@ def accuracy_plots(subset, n_clusters, width=1, xlimit=None, method=None):
     # MAKING INDIVIDUAL PLOTS
     _, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2,2,figsize=(15,12), constrained_layout=True)
 
-    ax1.bar(centres, counts.values, width=width, align="center")
-    if xlimit is not None:
-        ax1.set_xlim(0, xlimit)
-    ax1.set_xlabel("Distance to Assigned Cluster Centroid")
+    ax1.bar(centres, counts.values, width=width, align="center", color='sandybrown')
+    accuracy_plot_formatting(ax1, axis_label=x_axis_label, xlim= xlimits, ylim= ylimits)
     ax1.set_ylabel("Number of Galaxies")
-    ax1.set_title("Distribution of Distances to Assigned Cluster Centroids")
     ax1.grid(alpha=0.3)
 
-    ax2.bar(centres, accuracy.values, width=width, align="center")
-    if xlimit is not None:
-        ax2.set_xlim(0, xlimit)
-    ax2.set_xlabel("Distance to Assigned Cluster Centroid")
+    ax2.bar(centres, accuracy.values, width=width, align="center", color='olivedrab')
+    accuracy_plot_formatting(ax2, axis_label=x_axis_label, xlim=xlimits, ylim=ylimits)
     ax2.set_ylabel("Classification Accuracy")
-    ax2.set_title("Distribution of Distances to Assigned Cluster Centroids and Classification Accuracy")
     ax2.grid(alpha=0.3)
 
-    ax3.bar(centres, grouped_votes.values, width=width, align="center")
-    if xlimit is not None:
-        ax3.set_xlim(0, xlimit)
-    ax3.set_xlabel("Distance to Assigned Cluster Centroid")
+    ax3.bar(centres, grouped_votes.values, width=width, align="center", color='mediumvioletred')
+    accuracy_plot_formatting(ax3, axis_label=x_axis_label, xlim=xlimits, ylim=ylimits)
     ax3.set_ylabel("User Confidence: Number of Votes in Q1")
-    ax3.set_title("Distribution of Distances to Assigned Cluster Centroids and User Confidence")
     ax3.grid(alpha=0.3)
 
     cm = confusion_matrix(subset['Volunteer_Label'], subset['Predicted_Label'], labels=['R', 'S', 'E'])
@@ -287,21 +298,21 @@ def accuracy_plots(subset, n_clusters, width=1, xlimit=None, method=None):
     _, ax1 = plt.subplots(1,1,figsize=(8,6), constrained_layout=True)
 
     # Left Y-Axis: Accuracy
-    ax1.plot(centres, accuracy.values, color="tab:blue", label="Accuracy")
-    ax1.set_xlabel("Distance to Assigned Cluster Centroid")
-    ax1.set_ylabel("Classification Accuracy", color="tab:blue")
-    ax1.tick_params(axis='y', labelcolor="tab:blue")
-    if xlimit is not None:
-        ax1.set_xlim(0, xlimit)
+    ax1.bar(centres, accuracy.values, width=width, align="center", color="olivedrab", label="Accuracy")
+    ax1.set_xlabel(x_axis_label)
+    ax1.set_ylabel("Classification Accuracy", color="olivedrab")
+    ax1.tick_params(axis='y', labelcolor="olivedrab")
+    ax1.grid(alpha=0.3, color='olivedrab')
+    accuracy_plot_formatting(ax1, axis_label=x_axis_label, xlim=xlimits, ylim=ylimits)
 
     # Right Y-Axis: User Confidence
     ax2 = ax1.twinx()
-    ax2.plot(centres, grouped_votes.values, color="tab:red")
-    ax2.set_ylabel("User Confidence: Number of Votes in Q1", color="tab:red")
-    ax2.tick_params(axis='y', labelcolor="tab:red")
-
-    plt.title("Classification Accuracy and Q1 Votes vs Distance")
-    plt.grid(alpha=0.3)
+    ax2.plot(centres, grouped_votes.values, color="mediumvioletred")
+    accuracy_plot_formatting(ax2, axis_label=x_axis_label, xlim=None, ylim=ylimits)
+    ax2.set_ylabel("User Confidence: Number of Votes in Q1", color="mediumvioletred")
+    ax2.tick_params(axis='y', labelcolor="mediumvioletred")
+    ax2.grid(alpha=0.3, color='mediumvioletred')
+    
     plt.savefig(os.path.join('Data/Thesis Plots', f'{method}_accuracy_votes_plot.png'), bbox_inches='tight')
     plt.show()
 
