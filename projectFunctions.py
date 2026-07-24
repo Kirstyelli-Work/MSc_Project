@@ -217,7 +217,7 @@ def saving_images(classification, class_name,img_dir, data_root_dir):
                     count += 1
         show_random_images(os.path.join(data_root_dir, f'Galaxy_Images/{class_name}'), class_name, data_root_dir)
 
-def accuracy_plot_formatting(ax, axis_label, xlim=None, ylim=None):    
+def my_accuracy_plot_formatting(ax, axis_label, xlim=None, ylim=None):    
 
     if xlim is not None:
         ax.set_xlim(*xlim)
@@ -231,16 +231,18 @@ def accuracy_plot_formatting(ax, axis_label, xlim=None, ylim=None):
 
     ax.set_xlabel(axis_label)
 
-def accuracy_plots(subset, n_clusters, width=1, xlimits=None, ylimits=None, method=None):
+def distance_bin_plots(subset, n_clusters, xlimits=None, ylimits=None, method=None):
 
     # X AXIS - DISTANCE INFO
     # Extract distance columns as a numpy array
     if method == "BGMM":
         prefix = 'Prob'
         x_axis_label = 'Assigned Cluster Gaussian Density'
+        width = 0.1
     elif method == "MBKM":
         prefix = 'Distance'
         x_axis_label = 'Distance to Assigned Cluster Centroid'
+        width = 1
 
     distance_cols = [f"{prefix}_{i}" for i in range(n_clusters)]
     distance_array = subset[distance_cols].to_numpy()
@@ -264,55 +266,68 @@ def accuracy_plots(subset, n_clusters, width=1, xlimits=None, ylimits=None, meth
     accuracy = grouped["Correct"].mean()
 
     # Y AXIS - USER CONFIDENCE
-    grouped_votes = grouped["smooth-or-featured_total-votes"].sum()
+    grouped_votes = grouped["smooth-or-featured_total-votes"].mean()
 
     # MAKING INDIVIDUAL PLOTS
     _, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2,2,figsize=(15,12), constrained_layout=True)
 
     ax1.bar(centres, counts.values, width=width, align="center", color='sandybrown')
-    accuracy_plot_formatting(ax1, axis_label=x_axis_label, xlim= xlimits, ylim= ylimits)
+    my_accuracy_plot_formatting(ax1, axis_label=x_axis_label, xlim= xlimits, ylim= ylimits)
     ax1.set_ylabel("Number of Galaxies")
     ax1.grid(alpha=0.3)
 
     ax2.bar(centres, accuracy.values, width=width, align="center", color='olivedrab')
-    accuracy_plot_formatting(ax2, axis_label=x_axis_label, xlim=xlimits, ylim=ylimits)
+    my_accuracy_plot_formatting(ax2, axis_label=x_axis_label, xlim=xlimits, ylim=ylimits)
     ax2.set_ylabel("Classification Accuracy")
     ax2.grid(alpha=0.3)
 
     ax3.bar(centres, grouped_votes.values, width=width, align="center", color='mediumvioletred')
-    accuracy_plot_formatting(ax3, axis_label=x_axis_label, xlim=xlimits, ylim=ylimits)
-    ax3.set_ylabel("User Confidence: Number of Votes in Q1")
+    my_accuracy_plot_formatting(ax3, axis_label=x_axis_label, xlim=xlimits, ylim=ylimits)
+    ax3.set_ylabel("User Confidence: Avg. Number of Votes in Q1")
     ax3.grid(alpha=0.3)
 
-    cm = confusion_matrix(subset['Volunteer_Label'], subset['Predicted_Label'], labels=['R', 'S', 'E'])
-    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=['Round Elliptical', 'Spiral', 'Edge-On'], )
-    disp.plot(ax=ax4, colorbar=False ,cmap=plt.cm.Blues)
-    ax4.set_xlabel('Predicted Label')
-    ax4.set_ylabel('True Label')
-    ax4.tick_params(axis="y", rotation=90)
-
-    plt.savefig(os.path.join('Data/Thesis Plots', f'{method}_individual_accuracy_plots.png'), bbox_inches='tight')
-    plt.show()
-
-    # MAKING TOTAL PLOT
-    _, ax1 = plt.subplots(1,1,figsize=(8,6), constrained_layout=True)
-
     # Left Y-Axis: Accuracy
-    ax1.bar(centres, accuracy.values, width=width, align="center", color="olivedrab", label="Accuracy")
-    ax1.set_xlabel(x_axis_label)
-    ax1.set_ylabel("Classification Accuracy", color="olivedrab")
-    ax1.tick_params(axis='y', labelcolor="olivedrab")
-    ax1.grid(alpha=0.3, color='olivedrab')
-    accuracy_plot_formatting(ax1, axis_label=x_axis_label, xlim=xlimits, ylim=ylimits)
-
-    # Right Y-Axis: User Confidence
-    ax2 = ax1.twinx()
-    ax2.plot(centres, grouped_votes.values, color="mediumvioletred")
-    accuracy_plot_formatting(ax2, axis_label=x_axis_label, xlim=None, ylim=ylimits)
-    ax2.set_ylabel("User Confidence: Number of Votes in Q1", color="mediumvioletred")
-    ax2.tick_params(axis='y', labelcolor="mediumvioletred")
-    ax2.grid(alpha=0.3, color='mediumvioletred')
+    ax4.bar(centres, accuracy.values, width=width, align="center", color="olivedrab", label="Accuracy")
+    ax4.set_xlabel(x_axis_label)
+    ax4.set_ylabel("Classification Accuracy", color="olivedrab")
+    ax4.tick_params(axis='y', labelcolor="olivedrab")
+    ax4.grid(alpha=0.3, color='olivedrab')
+    my_accuracy_plot_formatting(ax4, axis_label=x_axis_label, xlim=xlimits, ylim=ylimits)
     
-    plt.savefig(os.path.join('Data/Thesis Plots', f'{method}_accuracy_votes_plot.png'), bbox_inches='tight')
+    # Right Y-Axis: User Confidence
+    ax5 = ax4.twinx()
+    ax5.scatter(centres, grouped_votes.values, color="mediumvioletred")
+    my_accuracy_plot_formatting(ax5, axis_label=x_axis_label, xlim=None, ylim=ylimits)
+    ax5.set_ylabel("User Confidence: Avg. Number of Votes in Q1", color="mediumvioletred")
+    ax5.tick_params(axis='y', labelcolor="mediumvioletred")
+    ax5.grid(alpha=0.3, color='mediumvioletred')
+
+    plt.savefig(os.path.join('Data/Thesis Plots', f'{method}_distance_bin_plots.png'), bbox_inches='tight')
     plt.show()
 
+def confidence_bin_plots(subset, width, xlimits=None, ylimits=None, method=None):
+
+    # MAKING ACCURACY VS USER CONFIDENCE PLOT
+    # Create Bins
+    bin_edges = np.arange(0, subset['smooth-or-featured_total-votes'].max()+width, width)
+    # Create Distance Bin Column
+    subset['Confidence_Bin'] = pd.cut(subset['smooth-or-featured_total-votes'],bins=bin_edges,include_lowest=True)
+    # Create Distance Groups
+    grouped = subset.groupby("Confidence_Bin", observed=False)
+    # Number of galaxies in each distance bin
+    counts = grouped.size()
+    # Finding bin centers for plotting
+    centres = np.array([i.mid for i in counts.index])
+    accuracy = grouped["Correct"].mean()
+
+    _, ax1 = plt.subplots(1,1,figsize=(8,6), constrained_layout=True)
+    
+    ax1.bar(centres, accuracy.values, width=width, align="center", color="olivedrab")
+    ax1.set_ylabel("Classification Accuracy")
+    ax1.grid(alpha=0.3)
+    my_accuracy_plot_formatting(ax1, "User Confidence: Avg. Number of Votes in Q1", xlim=xlimits, ylim=ylimits)
+        
+    plt.savefig(os.path.join('Data/Thesis Plots', f'{method}_confidence_bin_plot.png'), bbox_inches='tight')
+    plt.show()
+    
+    
