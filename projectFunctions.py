@@ -250,6 +250,7 @@ def distance_bin_plots(subset, n_clusters, xlimits=None, ylimits=None, method=No
     subset['Assigned_Distance'] = distance_array[np.arange(len(subset)), subset['Cluster'].to_numpy()]
     # Create Bins
     bin_edges = np.arange(0, subset['Assigned_Distance'].max()+width, width)
+    
     # Create Distance Bin Column
     subset['Distance_Bin'] = pd.cut(subset['Assigned_Distance'],bins=bin_edges,include_lowest=True)
     # Create Distance Groups
@@ -278,7 +279,7 @@ def distance_bin_plots(subset, n_clusters, xlimits=None, ylimits=None, method=No
 
     ax2.bar(centres, accuracy.values, width=width, align="center", color='olivedrab')
     my_accuracy_plot_formatting(ax2, axis_label=x_axis_label, xlim=xlimits, ylim=ylimits)
-    ax2.set_ylabel("Classification Accuracy")
+    ax2.set_ylabel("Avg. Classification Accuracy")
     ax2.grid(alpha=0.3)
 
     ax3.bar(centres, grouped_votes.values, width=width, align="center", color='mediumvioletred')
@@ -289,7 +290,7 @@ def distance_bin_plots(subset, n_clusters, xlimits=None, ylimits=None, method=No
     # Left Y-Axis: Accuracy
     ax4.bar(centres, accuracy.values, width=width, align="center", color="olivedrab", label="Accuracy")
     ax4.set_xlabel(x_axis_label)
-    ax4.set_ylabel("Classification Accuracy", color="olivedrab")
+    ax4.set_ylabel("Avg. Classification Accuracy", color="olivedrab")
     ax4.tick_params(axis='y', labelcolor="olivedrab")
     ax4.grid(alpha=0.3, color='olivedrab')
     my_accuracy_plot_formatting(ax4, axis_label=x_axis_label, xlim=xlimits, ylim=ylimits)
@@ -323,7 +324,7 @@ def confidence_bin_plots(subset, width, xlimits=None, ylimits=None, method=None)
     _, ax1 = plt.subplots(1,1,figsize=(8,6), constrained_layout=True)
     
     ax1.bar(centres, accuracy.values, width=width, align="center", color="olivedrab")
-    ax1.set_ylabel("Classification Accuracy")
+    ax1.set_ylabel("Avg. Classification Accuracy")
     ax1.grid(alpha=0.3)
     my_accuracy_plot_formatting(ax1, "User Confidence: Avg. Number of Votes in Q1", xlim=xlimits, ylim=ylimits)
         
