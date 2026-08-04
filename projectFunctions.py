@@ -231,7 +231,7 @@ def my_accuracy_plot_formatting(ax, axis_label, xlim=None, ylim=None):
 
     ax.set_xlabel(axis_label)
 
-def distance_bin_plots(subset, n_clusters, xlimits=None, ylimits=None, method=None):
+def distance_bin_plots(subset, xlimits=None, ylimits=None, method=None):
 
     # X AXIS - DISTANCE INFO
     # Extract distance columns as a numpy array
@@ -244,17 +244,13 @@ def distance_bin_plots(subset, n_clusters, xlimits=None, ylimits=None, method=No
         x_axis_label = 'Distance to Assigned Cluster Centroid'
         width = 1
 
-    distance_cols = [f"{prefix}_{i}" for i in range(n_clusters)]
-    distance_array = subset[distance_cols].to_numpy()
-    # Finding Assigned Distance by selecting the distance corresponding to the assigned cluster for each row
-    subset['Assigned_Distance'] = distance_array[np.arange(len(subset)), subset['Cluster'].to_numpy()]
     # Create Bins
-    bin_edges = np.arange(0, subset['Assigned_Distance'].max()+width, width)
+    bin_edges = np.arange(0, subset[f'Assigned_{prefix}'].max()+width, width)
     
     # Create Distance Bin Column
-    subset['Distance_Bin'] = pd.cut(subset['Assigned_Distance'],bins=bin_edges,include_lowest=True)
+    subset[f'{prefix}_Bin'] = pd.cut(subset[f'Assigned_{prefix}'],bins=bin_edges,include_lowest=True)
     # Create Distance Groups
-    grouped = subset.groupby("Distance_Bin", observed=False)
+    grouped = subset.groupby(f'{prefix}_Bin', observed=False)
 
     # Y AXIS - NUMBER OF GALAXIES
     # Number of galaxies in each distance bin
@@ -272,23 +268,23 @@ def distance_bin_plots(subset, n_clusters, xlimits=None, ylimits=None, method=No
     # MAKING INDIVIDUAL PLOTS
     _, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2,2,figsize=(15,12), constrained_layout=True)
 
-    ax1.bar(centres, counts.values, width=width, align="center", color='sandybrown')
+    ax1.scatter(centres, counts.values, color='sandybrown')
     my_accuracy_plot_formatting(ax1, axis_label=x_axis_label, xlim= xlimits, ylim= ylimits)
     ax1.set_ylabel("Number of Galaxies")
     ax1.grid(alpha=0.3)
 
-    ax2.bar(centres, accuracy.values, width=width, align="center", color='olivedrab')
+    ax2.scatter(centres, accuracy.values, color='olivedrab')
     my_accuracy_plot_formatting(ax2, axis_label=x_axis_label, xlim=xlimits, ylim=ylimits)
     ax2.set_ylabel("Avg. Classification Accuracy")
     ax2.grid(alpha=0.3)
 
-    ax3.bar(centres, grouped_votes.values, width=width, align="center", color='mediumvioletred')
+    ax3.scatter(centres, grouped_votes.values, color='mediumvioletred')
     my_accuracy_plot_formatting(ax3, axis_label=x_axis_label, xlim=xlimits, ylim=ylimits)
     ax3.set_ylabel("User Confidence: Avg. Number of Votes in Q1")
     ax3.grid(alpha=0.3)
 
     # Left Y-Axis: Accuracy
-    ax4.bar(centres, accuracy.values, width=width, align="center", color="olivedrab", label="Accuracy")
+    ax4.scatter(centres, accuracy.values, color="olivedrab", label="Accuracy")
     ax4.set_xlabel(x_axis_label)
     ax4.set_ylabel("Avg. Classification Accuracy", color="olivedrab")
     ax4.tick_params(axis='y', labelcolor="olivedrab")
@@ -323,7 +319,7 @@ def confidence_bin_plots(subset, width, xlimits=None, ylimits=None, method=None)
 
     _, ax1 = plt.subplots(1,1,figsize=(8,6), constrained_layout=True)
     
-    ax1.bar(centres, accuracy.values, width=width, align="center", color="olivedrab")
+    ax1.scatter(centres, accuracy.values, color="olivedrab")
     ax1.set_ylabel("Avg. Classification Accuracy")
     ax1.grid(alpha=0.3)
     my_accuracy_plot_formatting(ax1, "User Confidence: Avg. Number of Votes in Q1", xlim=xlimits, ylim=ylimits)
