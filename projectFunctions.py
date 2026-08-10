@@ -1,6 +1,6 @@
 from matplotlib import cm
 from sklearn.cluster import MiniBatchKMeans
-from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
+from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix, silhouette_score, silhouette_samples, davies_bouldin_score
 from sklearn.mixture import BayesianGaussianMixture
 import pandas as pd
 import numpy as np
@@ -10,14 +10,24 @@ import random
 from PIL import Image
 import matplotlib.pyplot as plt
 
-def myMBKM(features, n_clusters=20, max_iter=10, n_init="auto"):
+def myMBKM(features, n_clusters=20, max_iter=10, n_init="auto", metric_sample=None):
     # Perform fit
     my_kmeans = MiniBatchKMeans(n_clusters=n_clusters, max_iter=max_iter, n_init=n_init).fit(features)
     #print('K-Means Iterations: ',my_kmeans.n_iter_)
+    
     # Predict Labels, Centers and Distances
     kmeans_labels = my_kmeans.predict(features)
     kmeans_centers = my_kmeans.cluster_centers_
     kmeans_dist = my_kmeans.transform(features)
+    kmeans_inertia = my_kmeans.inertia_
+
+    # Metrics
+    sample_features = features.iloc[metric_sample]
+    sample_labels = kmeans_labels[metric_sample]
+
+    kmeans_silhouette = silhouette_score(sample_features, sample_labels)
+    kmeans_david = davies_bouldin_score(sample_features, sample_labels)
+
     # Create Distance Column Names
     dist_cols = []
     for i in range(kmeans_dist.shape[1]):
@@ -28,9 +38,9 @@ def myMBKM(features, n_clusters=20, max_iter=10, n_init="auto"):
     clusters['Center'] = [list(kmeans_centers[i]) for i in kmeans_labels]
     clusters[dist_cols] = kmeans_dist
 
-    return clusters
+    return kmeans_inertia, kmeans_silhouette, kmeans_david, clusters
 
-def myBGMM(features, n_components=20, weight_concentration_prior=0.5, n_init=10, max_iter=1000):
+def myBGMM(features, n_components=20, weight_concentration_prior=0.5, n_init=10, max_iter=1000, metric_sample=None):
     # Perform fit
     my_bgmm = BayesianGaussianMixture(n_components=n_components, weight_concentration_prior=weight_concentration_prior, n_init=n_init, max_iter=max_iter).fit(features)
     print("Converged: ", my_bgmm.converged_)
@@ -39,6 +49,16 @@ def myBGMM(features, n_components=20, weight_concentration_prior=0.5, n_init=10,
     bgmm_labels = my_bgmm.predict(features)
     bgmm_centers = my_bgmm.means_
     bgmm_prob = my_bgmm.predict_proba(features)
+    bgmm_weights = my_bgmm.weights_
+    bgmm_lower_bound = my_bgmm.lower_bound_
+
+    # Metrics
+    sample_features = features.iloc[metric_sample]
+    sample_labels = bgmm_labels[metric_sample]
+
+    bgmm_silhouette = silhouette_score(sample_features, sample_labels)
+    bgmm_david = davies_bouldin_score(sample_features, sample_labels)
+
     # Create Probability Column Names
     prob_cols = []
     for i in range(bgmm_prob.shape[1]):
@@ -49,7 +69,7 @@ def myBGMM(features, n_components=20, weight_concentration_prior=0.5, n_init=10,
     clusters['Center'] = [list(bgmm_centers[i]) for i in bgmm_labels]
     clusters[prob_cols] = bgmm_prob
 
-    return clusters
+    return bgmm_weights, bgmm_lower_bound, bgmm_silhouette, bgmm_david, clusters
 
 def create_gz_evaluation_set(
         input_df, question_level=1, min_votes=0, max_votes=None, half_votes_min=True, min_prob=0, max_prob=1, min_sources=100):
@@ -238,7 +258,7 @@ def distance_bin_plots(subset, xlimits=None, ylimits=None, method=None):
     if method == "BGMM":
         prefix = 'Prob'
         x_axis_label = 'Assigned Cluster Gaussian Density'
-        width = 0.1
+        width = 0.01
     elif method == "MBKM":
         prefix = 'Distance'
         x_axis_label = 'Distance to Assigned Cluster Centroid'
