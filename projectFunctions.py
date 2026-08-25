@@ -1,4 +1,5 @@
 from matplotlib import cm
+from IPython.display import display
 from sklearn.cluster import MiniBatchKMeans
 from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix, silhouette_score, silhouette_samples, davies_bouldin_score
 from sklearn.mixture import BayesianGaussianMixture
@@ -9,6 +10,60 @@ import shutil
 import random
 from PIL import Image
 import matplotlib.pyplot as plt
+from astronomaly.dimensionality_reduction import pca
+
+def feature_pre_processing(features, data_root_dir):
+    print('Features: ', features.shape)
+
+    my_pca = pca.PCA_Decomposer(force_rerun=True, n_components=29, threshold=0.95, output_dir=data_root_dir)
+    pca_features = my_pca.run(features)
+    pca_features.to_parquet(os.path.join(data_root_dir, 'pca_features.parquet'))
+    print('PCA Features: ', pca_features.shape)
+
+    return pca_features
+
+def label_pre_processing(full_volunteer_labels, data_root_dir, img_dir):
+
+    full_volunteer_labels = full_volunteer_labels.set_index('iauname')
+    print('Full GZD-5 Volunteer Labels: ', full_volunteer_labels.shape)
+    full_volunteer_labels = full_volunteer_labels[~full_volunteer_labels['wrong_size_warning']]
+    print('wrong_size_warning filtered GZD-5 Volunteer Labels: ', full_volunteer_labels.shape)
+
+    my_label_df, summ = create_gz_evaluation_set(full_volunteer_labels, 
+                                             question_level=3, min_votes=34, max_votes=None, half_votes_min=True, min_prob=0, max_prob=1, min_sources=100)
+    print('Refined GZD-5 Evaluation Set: ', my_label_df.shape)
+
+    ellipticals = my_label_df[(my_label_df['smooth-or-featured'] == 'smooth-or-featured_smooth') & 
+                              (my_label_df['merging'] == 'merging_none') & 
+                              (my_label_df['how-rounded'] == 'how-rounded_round')].index
+    spirals = my_label_df[(my_label_df['smooth-or-featured'] == 'smooth-or-featured_featured-or-disk') & 
+                          (my_label_df['merging'] == 'merging_none') &
+                          (my_label_df['disk-edge-on'] == 'disk-edge-on_no')].index
+    edge_ons = my_label_df[(my_label_df['smooth-or-featured'] == 'smooth-or-featured_featured-or-disk') & 
+                           (my_label_df['merging'] == 'merging_none') &
+                           (my_label_df['disk-edge-on'] == 'disk-edge-on_yes')].index
+
+    sorting_all_images(ellipticals, 'elliptical', img_dir, data_root_dir)
+    sorting_all_images(spirals, 'spiral', img_dir, data_root_dir)
+    sorting_all_images(edge_ons, 'edge_on', img_dir, data_root_dir)
+
+    # Combining the indices of the three classes to create a single DataFrame of volunteer labels
+    volunteer_labels_indices = ellipticals.union(spirals).union(edge_ons)
+    # Filtering the full volunteer labels to only include the galaxies that belong to the three classes
+    volunteer_labels = full_volunteer_labels.loc[volunteer_labels_indices]
+    # Assigning class labels to the volunteer labels DataFrame
+    volunteer_labels.loc[ellipticals, 'Volunteer_Label'] = 'R'   # Round ellipticals
+    volunteer_labels.loc[spirals, 'Volunteer_Label'] = 'S'       # Spirals
+    volunteer_labels.loc[edge_ons, 'Volunteer_Label'] = 'E'      # Edge-ons
+
+    volunteer_labels.to_parquet(os.path.join(data_root_dir, 'volunteer_labels.parquet'))
+
+    print('Labelled Galaxies: ', volunteer_labels.shape)
+    print('Round Ellipticals: ',    (volunteer_labels['Volunteer_Label'] == 'R').sum())
+    print('Spirals: ',              (volunteer_labels['Volunteer_Label'] == 'S').sum())
+    print('Edge-ons: ',             (volunteer_labels['Volunteer_Label'] == 'E').sum())
+
+    return volunteer_labels
 
 def myMBKM(features, n_clusters=20, max_iter=10, n_init="auto", metric_sample=None):
     # Perform fit
@@ -200,7 +255,7 @@ def create_gz_evaluation_set(
     
     return df_top, classes_summary
 
-def show_random_images(folder, classification, data_root_dir):
+def save_random_images(folder, classification, data_root_dir):
 
     files = [f for f in os.listdir(folder) if f.endswith('.png')]
     random_images = random.sample(files, 5)
@@ -221,21 +276,24 @@ def show_random_images(folder, classification, data_root_dir):
         ax.axis("off")
 
     plt.tight_layout()
-    plt.savefig(f'{classification}_random_images.png')
+    plt.savefig(os.path.join(data_root_dir, f'Galaxy_Images/{classification}_random_images.png'))
+    plt.close()
+    print(f'Random images for {classification} saved in {os.path.join(data_root_dir, f"Galaxy_Images/{classification}_random_images.png")}')
 
-def saving_images(classification, class_name,img_dir, data_root_dir):
+def sorting_all_images(classification, class_name,img_dir, data_root_dir):
     
-        filenames_to_find = set(classification.astype(str) + '.png')
-        count = 0
+    filenames_to_find = set(classification.astype(str) + '.png')
+    count = 0
 
-        for root, dirs, files in os.walk(img_dir):
-            for file in files:
-                if file in filenames_to_find:
-                    src_path = os.path.join(root, file)
-                    dest_path = os.path.join(data_root_dir, f'Galaxy_Images/{class_name}', file)
-                    shutil.copy2(src_path, dest_path)
-                    count += 1
-        show_random_images(os.path.join(data_root_dir, f'Galaxy_Images/{class_name}'), class_name, data_root_dir)
+    for root, dirs, files in os.walk(img_dir):
+        for file in files:
+            if file in filenames_to_find:
+                src_path = os.path.join(root, file)
+                dest_path = os.path.join(data_root_dir, f'Galaxy_Images/{class_name}', file)
+                shutil.copy2(src_path, dest_path)
+                count += 1
+    save_random_images(os.path.join(data_root_dir, f'Galaxy_Images/{class_name}'), class_name, data_root_dir)
+    print('Number of images copied for class', class_name, ':', count, 'in', os.path.join(data_root_dir, f'Galaxy_Images/{class_name}'))
 
 def my_accuracy_plot_formatting(ax, axis_label, xlim=None, ylim=None):    
 
@@ -286,7 +344,7 @@ def distance_bin_plots(subset, xlimits=None, ylimits=None, method=None):
     grouped_votes = grouped["smooth-or-featured_total-votes"].mean()
 
     # MAKING INDIVIDUAL PLOTS
-    _, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2,2,figsize=(15,12), constrained_layout=True)
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2,2,figsize=(15,12), constrained_layout=True)
 
     ax1.scatter(centres, counts.values, color='sandybrown')
     my_accuracy_plot_formatting(ax1, axis_label=x_axis_label, xlim= xlimits, ylim= ylimits)
@@ -320,7 +378,8 @@ def distance_bin_plots(subset, xlimits=None, ylimits=None, method=None):
     ax5.grid(alpha=0.3, color='mediumvioletred')
 
     plt.savefig(os.path.join('Data/Thesis Plots', f'{method}_distance_bin_plots.png'), bbox_inches='tight')
-    plt.show()
+    display(fig)
+    plt.close(fig)
 
 def confidence_bin_plots(subset, width, xlimits=None, ylimits=None, method=None):
 
@@ -337,7 +396,7 @@ def confidence_bin_plots(subset, width, xlimits=None, ylimits=None, method=None)
     centres = np.array([i.mid for i in counts.index])
     accuracy = grouped["Correct"].mean()
 
-    _, ax1 = plt.subplots(1,1,figsize=(8,6), constrained_layout=True)
+    fig, ax1 = plt.subplots(1,1,figsize=(8,6), constrained_layout=True)
     
     ax1.scatter(centres, accuracy.values, color="olivedrab")
     ax1.set_ylabel("Avg. Classification Accuracy")
@@ -345,6 +404,7 @@ def confidence_bin_plots(subset, width, xlimits=None, ylimits=None, method=None)
     my_accuracy_plot_formatting(ax1, "User Confidence: Avg. Number of Votes in Q1", xlim=xlimits, ylim=ylimits)
         
     plt.savefig(os.path.join('Data/Thesis Plots', f'{method}_confidence_bin_plot.png'), bbox_inches='tight')
-    plt.show()
+    display(fig)
+    plt.close(fig)
     
     
