@@ -10,6 +10,9 @@ import shutil
 import random
 from PIL import Image
 import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
+from matplotlib.patches import ConnectionPatch
+from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 from astronomaly.dimensionality_reduction import pca
 
 def feature_pre_processing(features, data_root_dir):
@@ -407,4 +410,49 @@ def confidence_bin_plots(subset, width, xlimits=None, ylimits=None, method=None)
     display(fig)
     plt.close(fig)
     
-    
+def add_thumbnail_panel(fig, selected_indices, cluster, position, border_color, image_paths):
+
+    panel_ax = fig.add_axes(position)
+    panel_ax.set_zorder(10)
+    panel_ax.set_xlim(0, 3)
+    panel_ax.set_ylim(0, 3)
+    # Hide ticks
+    panel_ax.set_xticks([])
+    panel_ax.set_yticks([])
+
+    # Coloured border
+    panel_ax.patch.set_facecolor("white")
+    panel_ax.patch.set_edgecolor(border_color)
+    panel_ax.patch.set_linewidth(30)
+
+    # Display images
+    for i, idx in enumerate(selected_indices):
+
+        image_id = str(idx)
+
+        if image_id not in image_paths:
+            continue
+
+        img = mpimg.imread(image_paths[image_id])
+        imagebox = OffsetImage(img, zoom=0.12)
+
+        row = i // 3
+        col = i % 3
+        x = col + 0.5
+        y = 2.5 - row
+
+        ab = AnnotationBbox(
+            imagebox,
+            (x, y),
+            frameon=False,
+            pad=0
+        )
+
+        panel_ax.add_artist(ab)
+
+    # Cluster number above thumbnail
+    panel_ax.text(0.5, 1.15, cluster,
+                  transform=panel_ax.transAxes, ha="center", va="bottom",
+                  fontsize=18, fontweight="bold")
+
+    return panel_ax
