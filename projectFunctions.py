@@ -1,22 +1,14 @@
-from matplotlib import cm
-from IPython.display import display
-from sklearn.cluster import MiniBatchKMeans
-from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix, silhouette_score, silhouette_samples, davies_bouldin_score
-from sklearn.mixture import BayesianGaussianMixture
 import pandas as pd
 import numpy as np
 import os
-import shutil
-import random
-from PIL import Image
-import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
-from matplotlib.patches import ConnectionPatch
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 from astronomaly.dimensionality_reduction import pca
+from sklearn.cluster import MiniBatchKMeans
+from sklearn.mixture import BayesianGaussianMixture
+from sklearn.metrics import silhouette_score, davies_bouldin_score
 
 def feature_pre_processing(features, data_root_dir):
-    print('Features: ', features.shape)
 
     my_pca = pca.PCA_Decomposer(force_rerun=True, n_components=29, threshold=0.95, output_dir=data_root_dir)
     pca_features = my_pca.run(features)
@@ -32,8 +24,8 @@ def label_pre_processing(full_volunteer_labels, data_root_dir, img_dir):
     full_volunteer_labels = full_volunteer_labels[~full_volunteer_labels['wrong_size_warning']]
     print('wrong_size_warning filtered GZD-5 Volunteer Labels: ', full_volunteer_labels.shape)
 
-    my_label_df, summ = create_gz_evaluation_set(full_volunteer_labels, 
-                                             question_level=3, min_votes=34, max_votes=None, half_votes_min=True, min_prob=0, max_prob=1, min_sources=100)
+    my_label_df, summ = create_gz_evaluation_set(full_volunteer_labels, question_level=3, min_votes=34, max_votes=None, 
+                                                 half_votes_min=True, min_prob=0.8, max_prob=1, min_sources=100)
     print('Refined GZD-5 Evaluation Set: ', my_label_df.shape)
 
     ellipticals = my_label_df[(my_label_df['smooth-or-featured'] == 'smooth-or-featured_smooth') & 
@@ -45,10 +37,6 @@ def label_pre_processing(full_volunteer_labels, data_root_dir, img_dir):
     edge_ons = my_label_df[(my_label_df['smooth-or-featured'] == 'smooth-or-featured_featured-or-disk') & 
                            (my_label_df['merging'] == 'merging_none') &
                            (my_label_df['disk-edge-on'] == 'disk-edge-on_yes')].index
-
-    sorting_all_images(ellipticals, 'elliptical', img_dir, data_root_dir)
-    sorting_all_images(spirals, 'spiral', img_dir, data_root_dir)
-    sorting_all_images(edge_ons, 'edge_on', img_dir, data_root_dir)
 
     # Combining the indices of the three classes to create a single DataFrame of volunteer labels
     volunteer_labels_indices = ellipticals.union(spirals).union(edge_ons)
@@ -62,9 +50,9 @@ def label_pre_processing(full_volunteer_labels, data_root_dir, img_dir):
     volunteer_labels.to_parquet(os.path.join(data_root_dir, 'volunteer_labels.parquet'))
 
     print('Labelled Galaxies: ', volunteer_labels.shape)
-    print('Round Ellipticals: ',    (volunteer_labels['Volunteer_Label'] == 'R').sum())
-    print('Spirals: ',              (volunteer_labels['Volunteer_Label'] == 'S').sum())
-    print('Edge-ons: ',             (volunteer_labels['Volunteer_Label'] == 'E').sum())
+    print('Round Ellipticals: ', (volunteer_labels['Volunteer_Label'] == 'R').sum())
+    print('Spirals: ',           (volunteer_labels['Volunteer_Label'] == 'S').sum())
+    print('Edge-ons: ',          (volunteer_labels['Volunteer_Label'] == 'E').sum())
 
     return volunteer_labels
 
@@ -82,7 +70,6 @@ def myMBKM(features, n_clusters=20, max_iter=10, n_init="auto", metric_sample=No
     # Metrics
     sample_features = features.iloc[metric_sample]
     sample_labels = kmeans_labels[metric_sample]
-
     kmeans_silhouette = silhouette_score(sample_features, sample_labels)
     kmeans_david = davies_bouldin_score(sample_features, sample_labels)
 
@@ -94,15 +81,16 @@ def myMBKM(features, n_clusters=20, max_iter=10, n_init="auto", metric_sample=No
     clusters = pd.DataFrame(index = features.index.copy())
     clusters['Cluster'] = kmeans_labels
     clusters['Center'] = [list(kmeans_centers[i]) for i in kmeans_labels]
-    clusters[dist_cols] = kmeans_dist
+    distance_df = pd.DataFrame(kmeans_dist, index=clusters.index, columns=dist_cols)   
+    clusters = pd.concat([clusters, distance_df], axis=1)
 
     return kmeans_inertia, kmeans_silhouette, kmeans_david, clusters
 
 def myBGMM(features, n_components=20, weight_concentration_prior=0.5, n_init=10, max_iter=1000, metric_sample=None):
     # Perform fit
-    my_bgmm = BayesianGaussianMixture(n_components=n_components, weight_concentration_prior=weight_concentration_prior, n_init=n_init, max_iter=max_iter).fit(features)
-    print("Converged: ", my_bgmm.converged_)
-    print("BGMM Iterations: ", my_bgmm.n_iter_)
+    my_bgmm = BayesianGaussianMixture(n_components=n_components, weight_concentration_prior=weight_concentration_prior, 
+                                      n_init=n_init, max_iter=max_iter).fit(features)
+    
     # Predict Labels, Centers and Probabilities
     bgmm_labels = my_bgmm.predict(features)
     bgmm_centers = my_bgmm.means_
@@ -113,7 +101,6 @@ def myBGMM(features, n_components=20, weight_concentration_prior=0.5, n_init=10,
     # Metrics
     sample_features = features.iloc[metric_sample]
     sample_labels = bgmm_labels[metric_sample]
-
     bgmm_silhouette = silhouette_score(sample_features, sample_labels)
     bgmm_david = davies_bouldin_score(sample_features, sample_labels)
 
@@ -257,158 +244,6 @@ def create_gz_evaluation_set(
     classes_summary['complexity'] = (classes_summary[classes_summary.columns[:-1]]!='N/A').sum(axis=1)
     
     return df_top, classes_summary
-
-def save_random_images(folder, classification, data_root_dir):
-
-    files = [f for f in os.listdir(folder) if f.endswith('.png')]
-    random_images = random.sample(files, 5)
-
-    fig, axes = plt.subplots(1, 5, figsize=(10,2))
-
-    for ax, img_name in zip(axes.flatten(), random_images):
-
-        img_path = os.path.join(folder, img_name)
-        img = Image.open(img_path)
-        label = os.path.splitext(img_name)[0]
-
-        ax.imshow(img)
-        ax.text(0.98, 0.98, label,
-                transform=ax.transAxes,
-                ha='right', va='top',
-                color='white', fontsize=9)
-        ax.axis("off")
-
-    plt.tight_layout()
-    plt.savefig(os.path.join(data_root_dir, f'Galaxy_Images/{classification}_random_images.png'))
-    plt.close()
-    print(f'Random images for {classification} saved in {os.path.join(data_root_dir, f"Galaxy_Images/{classification}_random_images.png")}')
-
-def sorting_all_images(classification, class_name,img_dir, data_root_dir):
-    
-    filenames_to_find = set(classification.astype(str) + '.png')
-    count = 0
-
-    for root, dirs, files in os.walk(img_dir):
-        for file in files:
-            if file in filenames_to_find:
-                src_path = os.path.join(root, file)
-                dest_path = os.path.join(data_root_dir, f'Galaxy_Images/{class_name}', file)
-                shutil.copy2(src_path, dest_path)
-                count += 1
-    save_random_images(os.path.join(data_root_dir, f'Galaxy_Images/{class_name}'), class_name, data_root_dir)
-    print('Number of images copied for class', class_name, ':', count, 'in', os.path.join(data_root_dir, f'Galaxy_Images/{class_name}'))
-
-def my_accuracy_plot_formatting(ax, axis_label, xlim=None, ylim=None):    
-
-    if xlim is not None:
-        ax.set_xlim(*xlim)
-    else:
-        ax.set_xlim(left=0)
-
-    if ylim is not None:
-        ax.set_ylim(*ylim)
-    else:
-        ax.set_ylim(bottom=0)
-
-    ax.set_xlabel(axis_label)
-
-def distance_bin_plots(subset, xlimits=None, ylimits=None, method=None):
-
-    # X AXIS - DISTANCE INFO
-    # Extract distance columns as a numpy array
-    if method == "BGMM":
-        prefix = 'Prob'
-        x_axis_label = 'Assigned Cluster Gaussian Density'
-        width = 0.01
-    elif method == "MBKM":
-        prefix = 'Distance'
-        x_axis_label = 'Distance to Assigned Cluster Centroid'
-        width = 1
-
-    # Create Bins
-    bin_edges = np.arange(0, subset[f'Assigned_{prefix}'].max()+width, width)
-    
-    # Create Distance Bin Column
-    subset[f'{prefix}_Bin'] = pd.cut(subset[f'Assigned_{prefix}'],bins=bin_edges,include_lowest=True)
-    # Create Distance Groups
-    grouped = subset.groupby(f'{prefix}_Bin', observed=False)
-
-    # Y AXIS - NUMBER OF GALAXIES
-    # Number of galaxies in each distance bin
-    counts = grouped.size()
-    # Finding bin centers for plotting
-    centres = np.array([i.mid for i in counts.index])
-
-    # Y AXIS - ACCURACY MEAN PER BIN
-    subset["Correct"] = (subset["Predicted_Label"] == subset["Volunteer_Label"])
-    accuracy = grouped["Correct"].mean()
-
-    # Y AXIS - USER CONFIDENCE
-    grouped_votes = grouped["smooth-or-featured_total-votes"].mean()
-
-    # MAKING INDIVIDUAL PLOTS
-    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2,2,figsize=(15,12), constrained_layout=True)
-
-    ax1.scatter(centres, counts.values, color='sandybrown')
-    my_accuracy_plot_formatting(ax1, axis_label=x_axis_label, xlim= xlimits, ylim= ylimits)
-    ax1.set_ylabel("Number of Galaxies")
-    ax1.grid(alpha=0.3)
-
-    ax2.scatter(centres, accuracy.values, color='olivedrab')
-    my_accuracy_plot_formatting(ax2, axis_label=x_axis_label, xlim=xlimits, ylim=ylimits)
-    ax2.set_ylabel("Avg. Classification Accuracy")
-    ax2.grid(alpha=0.3)
-
-    ax3.scatter(centres, grouped_votes.values, color='mediumvioletred')
-    my_accuracy_plot_formatting(ax3, axis_label=x_axis_label, xlim=xlimits, ylim=ylimits)
-    ax3.set_ylabel("User Confidence: Avg. Number of Votes in Q1")
-    ax3.grid(alpha=0.3)
-
-    # Left Y-Axis: Accuracy
-    ax4.scatter(centres, accuracy.values, color="olivedrab", label="Accuracy")
-    ax4.set_xlabel(x_axis_label)
-    ax4.set_ylabel("Avg. Classification Accuracy", color="olivedrab")
-    ax4.tick_params(axis='y', labelcolor="olivedrab")
-    ax4.grid(alpha=0.3, color='olivedrab')
-    my_accuracy_plot_formatting(ax4, axis_label=x_axis_label, xlim=xlimits, ylim=ylimits)
-    
-    # Right Y-Axis: User Confidence
-    ax5 = ax4.twinx()
-    ax5.scatter(centres, grouped_votes.values, color="mediumvioletred")
-    my_accuracy_plot_formatting(ax5, axis_label=x_axis_label, xlim=None, ylim=ylimits)
-    ax5.set_ylabel("User Confidence: Avg. Number of Votes in Q1", color="mediumvioletred")
-    ax5.tick_params(axis='y', labelcolor="mediumvioletred")
-    ax5.grid(alpha=0.3, color='mediumvioletred')
-
-    plt.savefig(os.path.join('Data/Thesis Plots', f'{method}_distance_bin_plots.png'), bbox_inches='tight')
-    display(fig)
-    plt.close(fig)
-
-def confidence_bin_plots(subset, width, xlimits=None, ylimits=None, method=None):
-
-    # MAKING ACCURACY VS USER CONFIDENCE PLOT
-    # Create Bins
-    bin_edges = np.arange(0, subset['smooth-or-featured_total-votes'].max()+width, width)
-    # Create Distance Bin Column
-    subset['Confidence_Bin'] = pd.cut(subset['smooth-or-featured_total-votes'],bins=bin_edges,include_lowest=True)
-    # Create Distance Groups
-    grouped = subset.groupby("Confidence_Bin", observed=False)
-    # Number of galaxies in each distance bin
-    counts = grouped.size()
-    # Finding bin centers for plotting
-    centres = np.array([i.mid for i in counts.index])
-    accuracy = grouped["Correct"].mean()
-
-    fig, ax1 = plt.subplots(1,1,figsize=(8,6), constrained_layout=True)
-    
-    ax1.scatter(centres, accuracy.values, color="olivedrab")
-    ax1.set_ylabel("Avg. Classification Accuracy")
-    ax1.grid(alpha=0.3)
-    my_accuracy_plot_formatting(ax1, "User Confidence: Avg. Number of Votes in Q1", xlim=xlimits, ylim=ylimits)
-        
-    plt.savefig(os.path.join('Data/Thesis Plots', f'{method}_confidence_bin_plot.png'), bbox_inches='tight')
-    display(fig)
-    plt.close(fig)
     
 def add_thumbnail_panel(fig, selected_indices, cluster, position, border_color, image_paths):
 
@@ -416,6 +251,7 @@ def add_thumbnail_panel(fig, selected_indices, cluster, position, border_color, 
     panel_ax.set_zorder(10)
     panel_ax.set_xlim(0, 3)
     panel_ax.set_ylim(0, 3)
+
     # Hide ticks
     panel_ax.set_xticks([])
     panel_ax.set_yticks([])
@@ -427,12 +263,9 @@ def add_thumbnail_panel(fig, selected_indices, cluster, position, border_color, 
 
     # Display images
     for i, idx in enumerate(selected_indices):
-
         image_id = str(idx)
-
         if image_id not in image_paths:
             continue
-
         img = mpimg.imread(image_paths[image_id])
         imagebox = OffsetImage(img, zoom=0.12)
 
@@ -441,18 +274,28 @@ def add_thumbnail_panel(fig, selected_indices, cluster, position, border_color, 
         x = col + 0.5
         y = 2.5 - row
 
-        ab = AnnotationBbox(
-            imagebox,
-            (x, y),
-            frameon=False,
-            pad=0
-        )
-
+        ab = AnnotationBbox(imagebox, (x, y), frameon=False, pad=0)
         panel_ax.add_artist(ab)
 
     # Cluster number above thumbnail
-    panel_ax.text(0.5, 1.15, cluster,
-                  transform=panel_ax.transAxes, ha="center", va="bottom",
-                  fontsize=18, fontweight="bold")
+    panel_ax.text(0.5, 1.15, cluster, transform=panel_ax.transAxes, 
+                  ha="center", va="bottom", fontsize=18, fontweight="bold")
 
     return panel_ax
+
+def accuracy_plots(ax, acc_galaxies, cluster_int, cluster_centres, umap_features, cmap_cluster, norm_cluster):
+    # All galaxies in grey
+    ax.scatter(umap_features[:, 0], umap_features[:, 1], c="lightgrey", s=1, alpha=0.8)
+    # Selected clusters in colour
+    for cluster in acc_galaxies:
+        ax.set_aspect('equal')
+        mask = cluster_int == cluster
+        ax.scatter(umap_features[mask, 0], umap_features[mask, 1],
+                        c=cluster_int[mask], cmap=cmap_cluster, norm=norm_cluster, s=1, alpha=0.5)
+
+        # Cluster Centers
+        x, y = cluster_centres[cluster]
+        cluster_colour = cmap_cluster(norm_cluster(cluster))
+        ax.plot(x, y, marker="X", markersize=8, markeredgewidth=0.8, color=cluster_colour, markeredgecolor="black",)
+        
+    ax.set_xlabel("x (Arbitrary Units)", fontsize=14, labelpad=10)
