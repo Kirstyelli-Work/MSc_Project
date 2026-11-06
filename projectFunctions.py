@@ -12,12 +12,11 @@ def feature_pre_processing(features, data_root_dir):
 
     my_pca = pca.PCA_Decomposer(force_rerun=True, n_components=29, threshold=0.95, output_dir=data_root_dir)
     pca_features = my_pca.run(features)
-    pca_features.to_parquet(os.path.join(data_root_dir, 'pca_features.parquet'))
     print('PCA Features: ', pca_features.shape)
 
     return pca_features
 
-def label_pre_processing(full_volunteer_labels, data_root_dir, img_dir):
+def label_pre_processing(full_volunteer_labels, data_root_dir):
 
     full_volunteer_labels = full_volunteer_labels.set_index('iauname')
     print('Full GZD-5 Volunteer Labels: ', full_volunteer_labels.shape)
@@ -25,7 +24,7 @@ def label_pre_processing(full_volunteer_labels, data_root_dir, img_dir):
     print('wrong_size_warning filtered GZD-5 Volunteer Labels: ', full_volunteer_labels.shape)
 
     my_label_df, summ = create_gz_evaluation_set(full_volunteer_labels, question_level=3, min_votes=34, max_votes=None, 
-                                                 half_votes_min=True, min_prob=0.8, max_prob=1, min_sources=100)
+                                                 half_votes_min=True, min_prob=0, max_prob=1, min_sources=100)
     print('Refined GZD-5 Evaluation Set: ', my_label_df.shape)
 
     ellipticals = my_label_df[(my_label_df['smooth-or-featured'] == 'smooth-or-featured_smooth') & 
@@ -46,8 +45,6 @@ def label_pre_processing(full_volunteer_labels, data_root_dir, img_dir):
     volunteer_labels.loc[ellipticals, 'Volunteer_Label'] = 'R'   # Round ellipticals
     volunteer_labels.loc[spirals, 'Volunteer_Label'] = 'S'       # Spirals
     volunteer_labels.loc[edge_ons, 'Volunteer_Label'] = 'E'      # Edge-ons
-
-    volunteer_labels.to_parquet(os.path.join(data_root_dir, 'volunteer_labels.parquet'))
 
     print('Labelled Galaxies: ', volunteer_labels.shape)
     print('Round Ellipticals: ', (volunteer_labels['Volunteer_Label'] == 'R').sum())
